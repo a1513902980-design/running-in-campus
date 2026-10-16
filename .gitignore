@@ -1,0 +1,39 @@
+# ---------------------------------------------------------------------------
+# 绝不要提交到这里的东西
+# ---------------------------------------------------------------------------
+
+# 目标 App 与注入框架二进制
+*.apk
+*.xapk
+frida-server*
+fs16*
+
+# 账号 / 凭据 / 会话
+accounts/
+*.tar.gz
+token*
+*HEADER.xml
+USERINFO.xml
+*.db
+*.db-journal
+
+# 采集到的实数据（含真实坐标、真实路线）
+wps_*.json
+route*.json
+osm_*.json
+*.geojson
+
+# 运行产物与日志
+_work/
+auto/
+*.log
+screenshots/
+*.png
+*.xml
+
+# 本地环境
+.env
+venv/
+.venv/
+__pycache__/
+*.pyc
