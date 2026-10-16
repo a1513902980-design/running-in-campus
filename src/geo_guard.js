@@ -49,9 +49,20 @@
 (function () {
     'use strict';
 
-    /* ── 参数（★ 全部为占位符，按你的场景替换）──────────────────────────
-     *   写成带引号的字符串是有意的：这样文件**天然就是合法 JS**，
-     *   可以直接过 `node --check` / 语法高亮 / CI，不用先替换占位符。 */
+    /* ── 参数（★ 占位符，**必须先替换**，否则消毒器会静默失效！）────────────
+     *
+     * ⚠️ 为什么这里写成 `parseFloat('<...>')`：
+     *    是为了让文件**天然就是合法 JS**，可以直接过 `node --check` / 语法高亮 / CI，
+     *    不用先替换占位符才能做静态检查。
+     *
+     * ⚠️⚠️ 但它的代价是：**忘记替换就得到 NaN**，而 NaN 会让所有比较都变成 false ——
+     *    `dist()` 返回 NaN、`d > RADIUS_M` 永远不成立 ⇒ 消毒器"挂上了但什么都没拦"，
+     *    也就是本领域最贵的那种故障：**静默失效**。
+     *
+     *    所以下面有一个 `assertConfigured()` 启动自检：参数没替换就**大声报错**，
+     *    而不是安静地放过所有坐标。原始项目里这个坑真实发生过（钩子日志显示"已接管"，
+     *    但拦截计数永远是 0，排查了很久）。
+     */
     var REGION_LAT = parseFloat('<REGION_CENTER_LAT>');   /* 目标区域中心纬度 */
     var REGION_LNG = parseFloat('<REGION_CENTER_LNG>');   /* 目标区域中心经度 */
     var RADIUS_M = 1500.0;      /* 越界半径：区域最远活动范围 + 余量 */
@@ -59,6 +70,29 @@
     var SEED_M = 900.0;         /* 超过它认为"这是新一轮起点/重新定位"，不是跳变 */
     var HOLD_M = 100.0;         /* 保持期阈值：真人单次采样不可能移动 100 m */
     var HOLD_S = 1800.0;        /* 保持期时长（覆盖整轮）*/
+
+    /* ── 启动自检：宁可炸掉，也不要静默放过 ────────────────────────────── */
+    var CONFIG_OK = true;
+    (function assertConfigured() {
+        var bad = [];
+        if (!isFinite(REGION_LAT) || REGION_LAT === 0) bad.push("REGION_LAT");
+        if (!isFinite(REGION_LNG) || REGION_LNG === 0) bad.push("REGION_LNG");
+        if (!isFinite(RADIUS_M) || RADIUS_M <= 0) bad.push("RADIUS_M");
+        [["MAX_JUMP_M", MAX_JUMP_M], ["SEED_M", SEED_M],
+         ["HOLD_M", HOLD_M], ["HOLD_S", HOLD_S]].forEach(function (kv) {
+            if (!isFinite(kv[1]) || kv[1] <= 0) bad.push(kv[0]);
+        });
+        if (bad.length) {
+            CONFIG_OK = false;
+            console.log('[guard] ✗✗ 参数未配置：' + bad.join(', ')
+                + ' —— 消毒器将**拒绝工作**（不接管任何坐标入口），'
+                + '以免"看起来挂上了、实际上什么都没拦"。'
+                + ' 请替换文件顶部的 <REGION_CENTER_LAT> / <REGION_CENTER_LNG> 等占位符。');
+        } else {
+            console.log('[guard] 参数自检通过：中心=' + REGION_LAT.toFixed(6) + ',' + REGION_LNG.toFixed(6)
+                + ' 越界=' + RADIUS_M + 'm 跳变=' + MAX_JUMP_M + 'm 保持=' + HOLD_M + 'm/' + HOLD_S + 's');
+        }
+    })();
 
     var lastGood = [REGION_LAT, REGION_LNG];
     var running = false;        /* 是否已进入"跑动中"（收到近距离坐标后置 true）*/
@@ -206,6 +240,13 @@
     }
 
     Java.perform(function () {
+        /* ★ 参数没配置就**不接管任何入口**：让故障以"什么都没发生"以外的形式暴露出来。
+         *   原始项目里踩过的坑就是"钩子报已接管、拦截计数永远 0"，
+         *   看起来一切正常、实际完全没生效。 */
+        if (!CONFIG_OK) {
+            console.log('[guard] 已跳过挂钩：参数未配置（见上面的报错）。');
+            return;
+        }
         var tries = 0;
         var timer = setInterval(function () {
             tries++;
